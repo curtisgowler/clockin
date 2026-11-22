@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Clock-In</title>
+<meta name="theme-color" content="#1a1a1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Clock-In">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root { --in:#1b8a3a; --out:#c62828; --ink:#1a1a1a; --mute:#666; --bg:#f4f5f7; --card:#fff; --accent:#f5a400; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { background:var(--bg); }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); }
+  header { background:#1a1a1a; color:#fff; padding:calc(14px + env(safe-area-inset-top)) 16px 14px; text-align:center; border-bottom:4px solid var(--accent); }
+  header .site { font-size:19px; font-weight:700; }
+  header .sub { font-size:13px; opacity:.75; margin-top:2px; }
+  #net { display:none; background:#5a4300; color:#fff; text-align:center; font-size:13px; padding:6px; }
+  #net.show { display:block; }
+  main { max-width:440px; margin:0 auto; padding:16px 16px calc(40px + env(safe-area-inset-bottom)); }
+  .card { background:var(--card); border-radius:14px; padding:20px 18px; box-shadow:0 1px 3px rgba(0,0,0,.08); margin-bottom:14px; }
+  h2 { margin:0 0 6px; font-size:22px; }
+  h3 { margin:0 0 10px; font-size:17px; }
+  p { margin:0 0 14px; color:var(--mute); line-height:1.4; }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  select, input { width:100%; font-size:18px; padding:12px; border:1px solid #ccc; border-radius:10px; background:#fff; color:var(--ink); }
+  button { width:100%; border:0; border-radius:14px; font-size:22px; font-weight:800; padding:22px; color:#fff; margin-top:18px; letter-spacing:.5px; font-family:inherit; }
+  button:disabled { opacity:.55; }
+  .btn-in { background:var(--in); }
+  .btn-out { background:var(--out); }
+  .btn-plain { background:#1a1a1a; font-size:18px; padding:16px; }
+  .btn-small { background:#eee; color:var(--ink); font-size:15px; padding:12px; margin-top:12px; font-weight:700; }
+  .status { display:inline-block; padding:6px 12px; border-radius:999px; font-weight:700; font-size:14px; }
+  .status.on { background:#e3f4e8; color:var(--in); }
+  .status.off { background:#eee; color:#555; }
+  .msg { margin-top:16px; padding:12px 14px; border-radius:10px; font-size:16px; display:none; }
+  .msg.err { display:block; background:#fdecea; color:#8a1c1c; }
+  .msg.info { display:block; background:#eef4ff; color:#1d3e7a; }
+  .msg.warn { display:block; background:#fff4d6; color:#5a4300; }
+  .done { text-align:center; }
+  .done .big { font-size:44px; font-weight:800; margin:8px 0; }
+  .done .tick { font-size:60px; }
+  .done.in .big, .done.in .tick { color:var(--in); }
+  .done.out .big, .done.out .tick { color:var(--out); }
+  .flag { margin-top:10px; font-size:14px; color:#8a5a00; }
+  .hidden { display:none !important; }
+  .center { text-align:center; color:var(--mute); padding:30px 0; }
+  .who { display:flex; align-items:center; gap:14px; margin-bottom:6px; }
+  .avatar { width:64px; height:64px; border-radius:50%; object-fit:cover; background:#ddd; flex:none; }
+  .done .avatar { width:110px; height:110px; margin:0 auto 6px; display:block; border:4px solid currentColor; }
+  .photo-pick { display:flex; align-items:center; gap:12px; }
+  .photo-pick img { width:64px; height:64px; border-radius:50%; object-fit:cover; background:#eee; }
+  .photo-pick label.btn { margin:0; font-weight:600; background:#eee; padding:10px 14px; border-radius:10px; cursor:pointer; }
+  .hist { list-style:none; margin:0; padding:0; }
+  .hist li { display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid #eee; }
+  .hist li:first-child { border-top:0; }
+  .tag { flex:none; width:44px; text-align:center; font-size:12px; font-weight:800; border-radius:6px; padding:4px 0; color:#fff; }
+  .tag.IN { background:var(--in); } .tag.OUT { background:var(--out); }
+  .hist .what { flex:1; min-width:0; }
+  .hist .when { font-weight:700; }
+  .hist .where { color:var(--mute); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .hist .wait { color:#8a5a00; font-size:13px; }
+  .hist a { flex:none; color:#1d5fbf; font-weight:600; text-decoration:none; font-size:14px; padding:6px 0 6px 8px; }
+  .install { background:#fff8e6; border:1px solid #f0d58a; }
+  .install ol { margin:6px 0 0; padding-left:20px; line-height:1.6; }
+</style>
+</head>
+<body>
+<header>
+  <div class="site">Tri-Energy Services</div>
+  <div class="sub">Site sign in / sign out</div>
+</header>
+<div id="net">No signal. Clock-ins are saved on this phone and sent when signal returns.</div>
+<main>
+  <div id="install" class="card install hidden">
+    <h3>Install the Clock-In app</h3>
+    <div id="installIos" class="hidden">
+      <ol>
+        <li>Tap the <b>Share</b> button (square with an arrow) at the bottom of Safari.</li>
+        <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+        <li>Open <b>Clock-In</b> from your home screen.</li>
+      </ol>
+    </div>
+    <div id="installAndroid" class="hidden">
+      <p style="margin:0">Put Clock-In on your home screen so it opens in one tap, even with no signal.</p>
+      <button class="btn-plain" id="installBtn">Install app</button>
+    </div>
+    <div id="installOther" class="hidden">
+      <p style="margin:0">Open your browser menu and choose <b>Add to Home screen</b> or <b>Install app</b>.</p>
+    </div>
+  </div>
+
+  <div id="loading" class="center">Loading…</div>
+
+  <div id="register" class="card hidden">
+    <h2>Set up this phone</h2>
+    <p>You only do this once.</p>
+    <div id="pinStep">
+      <label for="pin">Your PIN</label>
+      <input id="pin" type="tel" inputmode="numeric" autocomplete="off" placeholder="From your supervisor">
+      <button class="btn-plain" id="findBtn">Next</button>
+    </div>
+    <div id="confirmStep" class="hidden">
+      <p style="margin:14px 0 4px">Is this you?</p>
+      <div id="foundName" style="font-size:24px;font-weight:800;margin-bottom:6px"></div>
+      <label>Your photo (optional)</label>
+      <div class="photo-pick">
+        <img id="photoPreview" class="hidden" alt="">
+        <label class="btn" for="photoInput">Take a selfie</label>
+        <input id="photoInput" type="file" accept="image/*" capture="user" class="hidden">
+      </div>
+      <button class="btn-in" id="regBtn">Yes, register this phone</button>
+      <button class="btn-plain" style="background:#888" id="notMeBtn">No, that's not me</button>
+    </div>
+    <div id="regMsg" class="msg"></div>
+  </div>
+
+  <div id="main" class="hidden">
+    <div class="card">
+      <div class="who">
+        <img id="mainPhoto" class="avatar hidden" alt="">
+        <div>
+          <h2 id="hello"></h2>
+          <div id="statusPill" class="status"></div>
+        </div>
+      </div>
+      <p id="workerMsg" style="margin-top:14px"></p>
+      <div id="locWrap">
+        <label for="loc">Work location</label>
+        <select id="loc"><option value="">Choose location…</option></select>
+      </div>
+      <button id="actionBtn"></button>
+      <div id="queueMsg" class="msg"></div>
+      <div id="mainMsg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h3>My clock-ins</h3>
+      <ul id="hist" class="hist"></ul>
+      <p id="histEmpty" class="hidden" style="margin:0">Nothing yet.</p>
+    </div>
+  </div>
+
+  <div id="done" class="card done hidden">
+    <img id="donePhoto" class="avatar hidden" alt="">
+    <div class="tick" id="doneTick"></div>
+    <div id="doneWhat" style="font-weight:700;font-size:20px"></div>
+    <div class="big" id="doneTime"></div>
+    <div id="doneDate" style="color:#666"></div>
+    <div id="doneFlag" class="flag"></div>
+    <button class="btn-plain" id="doneBtn">Done</button>
+  </div>
+</main>
+<script src="queue.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
