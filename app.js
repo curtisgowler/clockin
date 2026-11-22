@@ -1,5 +1,5 @@
 (function () {
-  var state = null, busy = false, photoData = null, foundName = null, lastFix = null, gpsStarted = false, installEvt = null;
+  var state = null, busy = false, inProfile = false, photoData = null, foundName = null, lastFix = null, gpsStarted = false, installEvt = null;
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- small helpers ---------- */
@@ -7,7 +7,7 @@
     try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; }
   }
   function show(id) {
-    ['loading', 'register', 'main', 'done'].forEach(function (x) { $(x).classList.toggle('hidden', x !== id); });
+    ['loading', 'register', 'main', 'done', 'profile'].forEach(function (x) { $(x).classList.toggle('hidden', x !== id); });
     window.scrollTo(0, 0);
   }
   function msg(id, text, kind) { var el = $(id); el.className = 'msg ' + (text ? kind || 'err' : ''); el.textContent = text || ''; }
@@ -84,6 +84,7 @@
   function render(s) {
     if (busy) return;
     state = s; saveState();
+    if (inProfile && s.registered && !s.visitor) return;
     if (!s.registered) {
       if (!$('register').classList.contains('hidden') && !$('visitorStep').classList.contains('hidden')) {
         fillSelect($('vLoc'), s.locations, $('vLoc').value || ls('clockin_location'));
@@ -100,6 +101,7 @@
     fillSelect($('loc'), s.locations, ls('clockin_location') || s.lastLocation);
     $('locWrap').classList.toggle('hidden', !!s.onSite);
     $('visitorDone').classList.toggle('hidden', !v || !!s.onSite);
+    $('profileBtn').classList.toggle('hidden', v);
     var pill = $('statusPill'), btn = $('actionBtn');
     if (s.onSite) {
       pill.className = 'status on'; pill.textContent = (v ? 'Signed in' : 'On site') + (s.location ? ' at ' + s.location : '') + ' since ' + s.since;
@@ -113,6 +115,11 @@
     renderHistory();
     show('main');
     startGps();
+    // The Command Centre's WORKER PROFILE button opens the app at #profile.
+    if (location.hash === '#profile' && !v && s.name) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+      openProfile();
+    }
   }
 
   function renderHistory() {
@@ -276,6 +283,46 @@
     img.src = URL.createObjectURL(f);
   }
 
+  /* ---------- my profile ---------- */
+  var profilePhoto = null;
+  function openProfile() {
+    if (!online()) { msg('mainMsg', 'No signal. Your profile can be changed when you have signal.'); return; }
+    profilePhoto = null;
+    $('pName').textContent = state.name; setImg('pPhoto', state.photo);
+    ['pPhone', 'pEmail', 'pEmergency'].forEach(function (id) { $(id).value = ''; $(id).disabled = true; });
+    $('pSaveBtn').disabled = true; msg('pMsg', 'Loading…', 'warn');
+    inProfile = true; show('profile');
+    callApi('getProfile', [phoneId()], 20000).then(function (p) {
+      $('pPhone').value = p.phone || ''; $('pEmail').value = p.email || ''; $('pEmergency').value = p.emergency || '';
+      if (p.photo) setImg('pPhoto', p.photo);
+      ['pPhone', 'pEmail', 'pEmergency'].forEach(function (id) { $(id).disabled = false; });
+      $('pSaveBtn').disabled = false; msg('pMsg', '');
+    }, function (e) { msg('pMsg', e.message); });
+  }
+  function saveProfile() {
+    var b = $('pSaveBtn'); b.disabled = true; b.textContent = 'Saving…'; msg('pMsg', '');
+    var data = { phone: $('pPhone').value, email: $('pEmail').value, emergency: $('pEmergency').value };
+    if (profilePhoto) data.photoData = profilePhoto;
+    callApi('saveProfile', [phoneId(), data], 30000).then(function (p) {
+      b.disabled = false; b.textContent = 'Save';
+      if (p.photo) { state.photo = p.photo; saveState(); setImg('pPhoto', p.photo); }
+      profilePhoto = null;
+      msg('pMsg', 'Saved.', 'ok');
+    }, function (e) { b.disabled = false; b.textContent = 'Save'; msg('pMsg', e.message); });
+  }
+  function shrinkPhoto(input, done) {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    var img = new Image();
+    img.onload = function () {
+      var max = 400, k = Math.min(1, max / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      done(c.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = URL.createObjectURL(f);
+  }
+
   /* ---------- visitors ---------- */
   function showVisitorForm() {
     $('pinStep').classList.add('hidden'); $('confirmStep').classList.add('hidden'); $('visitorStep').classList.remove('hidden');
@@ -311,6 +358,10 @@
   }
 
   /* ---------- start ---------- */
+  $('profileBtn').onclick = openProfile;
+  $('pSaveBtn').onclick = saveProfile;
+  $('pBackBtn').onclick = function () { inProfile = false; render(state); };
+  $('pPhotoInput').onchange = function () { shrinkPhoto(this, function (d) { profilePhoto = d; setImg('pPhoto', d); }); };
   $('visitorLink').onclick = function (e) { e.preventDefault(); showVisitorForm(); };
   $('vSignInBtn').onclick = visitorSignIn;
   $('vBackBtn').onclick = notMe;
