@@ -25,6 +25,13 @@
     return id;
   }
   function saveState() { if (state) ls('clockin_state', JSON.stringify(state)); }
+  function getVisitor() { try { var v = JSON.parse(ls('clockin_visitor') || 'null'); return v && v.name ? v : null; } catch (e) { return null; } }
+  function fillSelect(sel, names, pick) {
+    sel.length = 1;
+    (names || []).forEach(function (n) { var o = document.createElement('option'); o.value = o.textContent = n; sel.appendChild(o); });
+    if ((names || []).length === 1) pick = names[0];
+    if (pick && (names || []).indexOf(pick) >= 0) sel.value = pick;
+  }
   function online() { return navigator.onLine !== false; }
   function updateNet() { $('net').classList.toggle('show', !online()); }
 
@@ -77,23 +84,29 @@
   function render(s) {
     if (busy) return;
     state = s; saveState();
-    if (!s.registered) { notMe(); show('register'); return; }
+    if (!s.registered) {
+      if (!$('register').classList.contains('hidden') && !$('visitorStep').classList.contains('hidden')) {
+        fillSelect($('vLoc'), s.locations, $('vLoc').value || ls('clockin_location'));
+        return;
+      }
+      notMe(); show('register'); return;
+    }
+    var v = !!s.visitor;
     $('hello').textContent = 'Hi ' + s.name.split(' ')[0];
     setImg('mainPhoto', s.photo);
-    $('workerMsg').textContent = s.message || '';
-    var sel = $('loc'); sel.length = 1;
-    (s.locations || []).forEach(function (n) { var o = document.createElement('option'); o.value = o.textContent = n; sel.appendChild(o); });
-    var pick = ls('clockin_location') || s.lastLocation;
-    if ((s.locations || []).length === 1) pick = s.locations[0];
-    if (pick && s.locations.indexOf(pick) >= 0) sel.value = pick;
+    $('workerMsg').textContent = v ? 'Visitor: sign in when you arrive and sign out when you leave.' : (s.message || '');
+    $('locLabel').textContent = v ? 'Location you are visiting' : 'Work location';
+    $('histTitle').textContent = v ? 'My sign-ins' : 'My clock-ins';
+    fillSelect($('loc'), s.locations, ls('clockin_location') || s.lastLocation);
     $('locWrap').classList.toggle('hidden', !!s.onSite);
+    $('visitorDone').classList.toggle('hidden', !v || !!s.onSite);
     var pill = $('statusPill'), btn = $('actionBtn');
     if (s.onSite) {
-      pill.className = 'status on'; pill.textContent = 'On site' + (s.location ? ' at ' + s.location : '') + ' since ' + s.since;
-      btn.className = 'btn-out'; btn.textContent = 'CLOCK OUT';
+      pill.className = 'status on'; pill.textContent = (v ? 'Signed in' : 'On site') + (s.location ? ' at ' + s.location : '') + ' since ' + s.since;
+      btn.className = 'btn-out'; btn.textContent = v ? 'SIGN OUT' : 'CLOCK OUT';
     } else {
-      pill.className = 'status off'; pill.textContent = 'Not clocked in';
-      btn.className = 'btn-in'; btn.textContent = 'CLOCK IN';
+      pill.className = 'status off'; pill.textContent = v ? 'Not signed in' : 'Not clocked in';
+      btn.className = 'btn-in'; btn.textContent = v ? 'SIGN IN' : 'CLOCK IN';
     }
     btn.disabled = false;
     msg('mainMsg', '');
@@ -132,7 +145,11 @@
       if (!state || !state.registered) { show('register'); msg('regMsg', 'No signal. Connect once to set up this phone.'); }
       return;
     }
-    callApi('state', [phoneId()], 20000).then(render, function (e) {
+    var vis = getVisitor();
+    var req = vis
+      ? callApi('visitorState', [vis], 20000).then(function (r) { r.visitor = true; r.registered = true; return r; })
+      : callApi('state', [phoneId()], 20000);
+    req.then(render, function (e) {
       if (!state || !state.registered) { show('register'); msg('regMsg', e.network ? 'No signal. Connect once to set up this phone.' : e.message); }
     });
   }
@@ -156,7 +173,7 @@
     if (!state || busy) return;
     var action = state.onSite ? 'OUT' : 'IN';
     var site = action === 'IN' ? $('loc').value : (state.location || $('loc').value);
-    if (action === 'IN' && !site) { msg('mainMsg', 'Pick your work location first.'); return; }
+    if (action === 'IN' && !site) { msg('mainMsg', state.visitor ? 'Pick the location you are visiting.' : 'Pick your work location first.'); return; }
     if (action === 'IN') ls('clockin_location', site);
     var btn = $('actionBtn');
     busy = true; btn.disabled = true;
@@ -165,9 +182,11 @@
     getLocation().then(function (loc) {
       btn.textContent = 'Saving…';
       var entry = { id: newId(), action: action, site: site, loc: loc ? { lat: loc.lat, lng: loc.lng, acc: loc.acc } : null, at: Date.now() };
-      var send = online()
-        ? callApi('clock', [phoneId(), action, entry.loc, site, { at: entry.at, id: entry.id }], 12000)
-        : Promise.reject({ network: true });
+      var vis = state.visitor ? getVisitor() : null;
+      if (vis) entry.visitor = vis;
+      var send = !online() ? Promise.reject({ network: true })
+        : vis ? callApi('visitorClock', [phoneId(), vis, action, entry.loc, site, { at: entry.at, id: entry.id }], 12000)
+        : callApi('clock', [phoneId(), action, entry.loc, site, { at: entry.at, id: entry.id }], 12000);
       return send.then(function (r) {
         finish(r, false, entry);
         callApi('sync', [], 20000).catch(function () {});
@@ -197,7 +216,8 @@
     $('done').className = 'card done ' + (r.action === 'IN' ? 'in' : 'out');
     setImg('donePhoto', r.photo);
     $('doneTick').textContent = r.photo ? '' : (r.action === 'IN' ? '✔' : '⏏');
-    $('doneWhat').textContent = r.name + (r.action === 'IN' ? ' clocked IN' : ' clocked OUT');
+    var verb = state.visitor ? ' signed ' : ' clocked ';
+    $('doneWhat').textContent = (state.visitor ? getVisitor().name : r.name) + verb + r.action;
     $('doneTime').textContent = r.time;
     $('doneDate').textContent = r.location + ' · ' + r.date;
     $('doneFlag').textContent = queued
@@ -209,18 +229,30 @@
 
   /* ---------- first-time setup ---------- */
   function notMe() {
-    foundName = null; $('pin').value = '';
-    $('pinStep').classList.remove('hidden'); $('confirmStep').classList.add('hidden');
+    foundName = null; $('pin').value = ''; $('pickName').innerHTML = '';
+    $('pinStep').classList.remove('hidden'); $('confirmStep').classList.add('hidden'); $('visitorStep').classList.add('hidden');
+    $('regTitle').textContent = 'Set up this phone'; $('regSub').classList.remove('hidden');
     msg('regMsg', '');
+  }
+  function pickedName(n) {
+    foundName = n; $('foundName').textContent = n; $('pickName').innerHTML = '';
+    $('pinStep').classList.add('hidden'); $('confirmStep').classList.remove('hidden');
   }
   function doFind() {
     var pin = $('pin').value.trim();
     if (!pin) { msg('regMsg', 'Enter your PIN.'); return; }
     var b = $('findBtn'); b.disabled = true; b.textContent = 'Checking…'; msg('regMsg', '');
+    $('pickName').innerHTML = '';
     callApi('findByPin', [pin], 20000).then(function (n) {
       b.disabled = false; b.textContent = 'Next';
-      foundName = n; $('foundName').textContent = n;
-      $('pinStep').classList.add('hidden'); $('confirmStep').classList.remove('hidden');
+      if (!Array.isArray(n)) { pickedName(n); return; }
+      // More than one person has this PIN (same birth year): let them tap their own name.
+      var box = $('pickName');
+      var p = document.createElement('p'); p.textContent = 'More than one person has that PIN. Tap your name:'; box.appendChild(p);
+      n.forEach(function (nm) {
+        var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = nm;
+        bt.onclick = function () { pickedName(nm); }; box.appendChild(bt);
+      });
     }, function (e) { b.disabled = false; b.textContent = 'Next'; msg('regMsg', e.message); });
   }
   function doRegister() {
@@ -244,7 +276,45 @@
     img.src = URL.createObjectURL(f);
   }
 
+  /* ---------- visitors ---------- */
+  function showVisitorForm() {
+    $('pinStep').classList.add('hidden'); $('confirmStep').classList.add('hidden'); $('visitorStep').classList.remove('hidden');
+    $('regTitle').textContent = 'Visitor sign in'; $('regSub').classList.add('hidden');
+    msg('regMsg', '');
+    var v = getVisitor() || {};
+    if (v.name) $('vName').value = v.name;
+    if (v.company) $('vCompany').value = v.company;
+    fillSelect($('vLoc'), (state && state.locations) || [], ls('clockin_location'));
+    if (online()) callApi('state', [phoneId()], 20000).then(function (s) {
+      if (!s.registered) { state = s; saveState(); fillSelect($('vLoc'), s.locations, $('vLoc').value || ls('clockin_location')); }
+    }, function () {});
+  }
+  function visitorSignIn() {
+    var name = $('vName').value.replace(/\s+/g, ' ').trim(), company = $('vCompany').value.replace(/\s+/g, ' ').trim(), site = $('vLoc').value;
+    if (name.indexOf(' ') < 0) { msg('regMsg', 'Type your first and last name.'); return; }
+    if (!company) { msg('regMsg', 'Type the company you are with.'); return; }
+    if (!site) { msg('regMsg', 'Pick the location you are visiting.'); return; }
+    ls('clockin_visitor', JSON.stringify({ name: name, company: company }));
+    ls('clockin_location', site);
+    var locs = $('vLoc').options; var names = [];
+    for (var i = 1; i < locs.length; i++) names.push(locs[i].value);
+    render({ registered: true, visitor: true, name: name, locations: names, onSite: false, history: [] });
+    $('loc').value = site;
+    doClock();
+  }
+  function visitorDone() {
+    try { localStorage.removeItem('clockin_visitor'); } catch (e) {}
+    $('vName').value = ''; $('vCompany').value = '';
+    var locs = state && state.locations;
+    state = { registered: false, locations: locs }; saveState();
+    notMe(); show('register');
+  }
+
   /* ---------- start ---------- */
+  $('visitorLink').onclick = function (e) { e.preventDefault(); showVisitorForm(); };
+  $('vSignInBtn').onclick = visitorSignIn;
+  $('vBackBtn').onclick = notMe;
+  $('visitorDoneLink').onclick = function (e) { e.preventDefault(); visitorDone(); };
   $('findBtn').onclick = doFind;
   $('regBtn').onclick = doRegister;
   $('notMeBtn').onclick = notMe;

@@ -64,7 +64,10 @@ function flushQueue() {
       function next() {
         if (i >= items.length) return Promise.resolve();
         var e = items[i];
-        return callApi('clock', [pid, e.action, e.loc, e.site, { at: e.at, id: e.id }], 20000).then(function () {
+        var call = e.visitor
+          ? callApi('visitorClock', [pid, e.visitor, e.action, e.loc, e.site, { at: e.at, id: e.id }], 20000)
+          : callApi('clock', [pid, e.action, e.loc, e.site, { at: e.at, id: e.id }], 20000);
+        return call.then(function () {
           result.sent++; i++; return queueDel(e.id).then(next);
         }, function (err) {
           if (err.server) { result.rejected.push(err.message); i++; return queueDel(e.id).then(next); }
