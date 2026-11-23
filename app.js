@@ -1,5 +1,5 @@
 (function () {
-  var state = null, busy = false, inProfile = false, photoData = null, foundName = null, lastFix = null, gpsStarted = false, installEvt = null;
+  var state = null, busy = false, inProfile = false, wantProfile = false, photoData = null, foundName = null, lastFix = null, gpsStarted = false, installEvt = null;
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------- small helpers ---------- */
@@ -90,7 +90,9 @@
         fillSelect($('vLoc'), s.locations, $('vLoc').value || ls('clockin_location'));
         return;
       }
-      notMe(); show('register'); return;
+      notMe(); show('register');
+      if (wantProfile) msg('regMsg', 'To change your profile, first set up this phone: type your PIN (the year you were born) and press Next.', 'info');
+      return;
     }
     var v = !!s.visitor;
     $('hello').textContent = 'Hi ' + s.name.split(' ')[0];
@@ -116,10 +118,7 @@
     show('main');
     startGps();
     // The Command Centre's WORKER PROFILE button opens the app at #profile.
-    if (location.hash === '#profile' && !v && s.name) {
-      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-      openProfile();
-    }
+    if (wantProfile && !v && s.name) { wantProfile = false; openProfile(); }
   }
 
   function renderHistory() {
@@ -378,6 +377,14 @@
   setInterval(function () { if (!busy) sync(); }, 60000);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 
+  function checkHash() {
+    if (location.hash !== '#profile') return false;
+    wantProfile = true;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    return true;
+  }
+  window.addEventListener('hashchange', function () { if (checkHash() && state && !busy) render(state); });
+  checkHash();
   updateNet();
   setupInstall();
   var cached = null;
