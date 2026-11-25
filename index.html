@@ -104,6 +104,8 @@
     <h2 id="regTitle">Set up this phone</h2>
     <p id="regSub">You only do this once.</p>
     <div id="pinStep">
+      <label for="wName">Your first and last name</label>
+      <input id="wName" type="text" autocomplete="name" autocapitalize="words" maxlength="60">
       <label for="pin">Your PIN</label>
       <input id="pin" type="tel" inputmode="numeric" autocomplete="off" placeholder="The year you were born, e.g. 1985">
       <button class="btn-plain" id="findBtn">Next</button>
@@ -132,6 +134,27 @@
       </div>
       <button class="btn-in" id="regBtn">Yes, register this phone</button>
       <button class="btn-plain" style="background:#888" id="notMeBtn">No, that's not me</button>
+    </div>
+    <div id="resetStep" class="hidden">
+      <p style="margin:14px 0 4px">Got a new phone?</p>
+      <button class="btn-plain" id="resetOpenBtn">Move my sign-in to this phone</button>
+    </div>
+    <div id="resetForm" class="hidden">
+      <p style="margin:14px 0 4px"><b id="resetWho"></b>, this moves your sign-in to this phone. Your old phone will be signed out.</p>
+      <div id="resetHave" class="hidden">
+        <label for="rPw">Your reset password</label>
+        <input id="rPw" type="password" autocomplete="current-password" maxlength="60">
+        <p style="margin:8px 0 0;font-size:14px">Forgot it? Ask your supervisor to clear your reset password.</p>
+      </div>
+      <div id="resetMake" class="hidden">
+        <label for="rNew">Make a reset password</label>
+        <input id="rNew" type="password" autocomplete="new-password" maxlength="60" placeholder="At least 6 letters or numbers">
+        <label for="rNew2">Type it again</label>
+        <input id="rNew2" type="password" autocomplete="new-password" maxlength="60">
+        <p style="margin:8px 0 0;font-size:14px">Remember it. You will need it the next time you change phones.</p>
+      </div>
+      <button class="btn-in" id="resetBtn">Reset and use this phone</button>
+      <button class="btn-plain" style="background:#888" id="resetBackBtn">Back</button>
     </div>
     <div id="regMsg" class="msg"></div>
   </div>

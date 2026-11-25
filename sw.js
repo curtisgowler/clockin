@@ -1,6 +1,6 @@
 importScripts('queue.js');
 
-var CACHE = 'clockin-v4';
+var CACHE = 'clockin-v5';
 var FILES = ['./', 'index.html', 'app.js', 'queue.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
@@ -18,7 +18,7 @@ self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(caches.open(CACHE).then(function (c) {
-    var timeout = new Promise(function (resolve) { setTimeout(resolve, 4000); });
+    var timeout = new Promise(function (resolve) { setTimeout(resolve, 1200); });
     var net = fetch(req, { cache: 'no-cache' }).then(function (res) { if (res.ok) c.put(req, res.clone()); return res; });
     return Promise.race([net.catch(function () { return null; }), timeout]).then(function (res) {
       return res || c.match(req, { ignoreSearch: true }).then(function (hit) { return hit || net; });

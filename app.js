@@ -86,12 +86,13 @@
     state = s; saveState();
     if (inProfile && s.registered && !s.visitor) return;
     if (!s.registered) {
-      if (!$('register').classList.contains('hidden') && !$('visitorStep').classList.contains('hidden')) {
+      // Setup form is already showing (shown at once on start): don't wipe what the worker is typing.
+      if (!$('register').classList.contains('hidden')) {
         fillSelect($('vLoc'), s.locations, $('vLoc').value || ls('clockin_location'));
         return;
       }
       notMe(); show('register');
-      if (wantProfile) msg('regMsg', 'To change your profile, first set up this phone: type your PIN (the year you were born) and press Next.', 'info');
+      if (wantProfile) msg('regMsg', 'To change your profile, first set up this phone: type your name and PIN and press Next.', 'info');
       return;
     }
     var v = !!s.visitor;
@@ -235,30 +236,27 @@
 
   /* ---------- first-time setup ---------- */
   function notMe() {
-    foundName = null; $('pin').value = ''; $('pickName').innerHTML = '';
+    foundName = null; $('pin').value = ''; $('wName').value = ''; $('pickName').innerHTML = '';
     $('pinStep').classList.remove('hidden'); $('confirmStep').classList.add('hidden'); $('visitorStep').classList.add('hidden');
+    hideReset();
     $('regTitle').textContent = 'Set up this phone'; $('regSub').classList.remove('hidden');
     msg('regMsg', '');
   }
   function pickedName(n) {
     foundName = n; $('foundName').textContent = n; $('pickName').innerHTML = '';
     $('pinStep').classList.add('hidden'); $('confirmStep').classList.remove('hidden');
+    hideReset();
   }
   function doFind() {
-    var pin = $('pin').value.trim();
+    var pin = $('pin').value.trim(), nm = $('wName').value.replace(/\s+/g, ' ').trim();
+    if (nm.indexOf(' ') < 0) { msg('regMsg', 'Type your first and last name.'); return; }
     if (!pin) { msg('regMsg', 'Enter your PIN.'); return; }
     var b = $('findBtn'); b.disabled = true; b.textContent = 'Checking…'; msg('regMsg', '');
     $('pickName').innerHTML = '';
-    callApi('findByPin', [pin], 20000).then(function (n) {
+    // Name AND PIN must both match before anything is shown (keeps worker names private).
+    callApi('findWorker', [nm, pin, phoneId()], 20000).then(function (n) {
       b.disabled = false; b.textContent = 'Next';
-      if (!Array.isArray(n)) { pickedName(n); return; }
-      // More than one person has this PIN (same birth year): let them tap their own name.
-      var box = $('pickName');
-      var p = document.createElement('p'); p.textContent = 'More than one person has that PIN. Tap your name:'; box.appendChild(p);
-      n.forEach(function (nm) {
-        var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = nm;
-        bt.onclick = function () { pickedName(nm); }; box.appendChild(bt);
-      });
+      pickedName(n);
     }, function (e) { b.disabled = false; b.textContent = 'Next'; msg('regMsg', e.message); });
   }
   function doRegister() {
@@ -267,7 +265,49 @@
     var b = $('regBtn'); b.disabled = true; b.textContent = 'Registering…';
     callApi('register', [foundName, pin, phoneId(), photoData], 30000).then(function (s) {
       b.disabled = false; b.textContent = 'Yes, register this phone'; render(s);
-    }, function (e) { b.disabled = false; b.textContent = 'Yes, register this phone'; msg('regMsg', e.message); });
+    }, function (e) {
+      b.disabled = false; b.textContent = 'Yes, register this phone'; msg('regMsg', e.message);
+      if (/already registered on another phone/i.test(e.message)) $('resetStep').classList.remove('hidden');
+    });
+  }
+
+  /* ---------- worker moves their own sign-in to this phone ---------- */
+  var resetHasPw = false;
+  function hideReset() {
+    $('resetStep').classList.add('hidden'); $('resetForm').classList.add('hidden');
+    ['rPw', 'rNew', 'rNew2'].forEach(function (id) { $(id).value = ''; });
+  }
+  function openReset() {
+    var pin = $('pin').value.trim();
+    if (!foundName || !pin) { notMe(); return; }
+    var b = $('resetOpenBtn'); b.disabled = true; b.textContent = 'Checking…'; msg('regMsg', '');
+    callApi('resetInfo', [foundName, pin], 20000).then(function (r) {
+      b.disabled = false; b.textContent = 'Move my sign-in to this phone';
+      resetHasPw = !!r.hasPassword;
+      $('resetWho').textContent = foundName.split(' ')[0];
+      $('resetHave').classList.toggle('hidden', !resetHasPw);
+      $('resetMake').classList.toggle('hidden', resetHasPw);
+      $('confirmStep').classList.add('hidden'); $('resetStep').classList.add('hidden'); $('resetForm').classList.remove('hidden');
+      $('regTitle').textContent = 'Move to this phone'; $('regSub').classList.add('hidden');
+      $(resetHasPw ? 'rPw' : 'rNew').focus();
+    }, function (e) { b.disabled = false; b.textContent = 'Move my sign-in to this phone'; msg('regMsg', e.message); });
+  }
+  function doReset() {
+    var pin = $('pin').value.trim(), pw = '', np = '';
+    if (resetHasPw) {
+      pw = $('rPw').value;
+      if (!pw) { msg('regMsg', 'Type your reset password.'); return; }
+    } else {
+      np = $('rNew').value;
+      if (np.length < 6) { msg('regMsg', 'Make your reset password at least 6 letters or numbers.'); return; }
+      if (np !== $('rNew2').value) { msg('regMsg', 'The two passwords do not match. Type them again.'); return; }
+    }
+    var b = $('resetBtn'); b.disabled = true; b.textContent = 'Resetting…'; msg('regMsg', '');
+    callApi('resetPhone', [foundName, pin, pw, np, phoneId()], 30000).then(function (s) {
+      b.disabled = false; b.textContent = 'Reset and use this phone';
+      hideReset(); render(s);
+      msg('mainMsg', 'Done. This phone is now yours. Your old phone is signed out.', 'ok');
+    }, function (e) { b.disabled = false; b.textContent = 'Reset and use this phone'; msg('regMsg', e.message); });
   }
   function pickPhoto(input) {
     var f = input.files && input.files[0];
@@ -367,6 +407,13 @@
   $('visitorDoneLink').onclick = function (e) { e.preventDefault(); visitorDone(); };
   $('findBtn').onclick = doFind;
   $('regBtn').onclick = doRegister;
+  $('resetOpenBtn').onclick = openReset;
+  $('resetBtn').onclick = doReset;
+  $('resetBackBtn').onclick = function () {
+    hideReset(); msg('regMsg', '');
+    $('regTitle').textContent = 'Set up this phone'; $('regSub').classList.remove('hidden');
+    $('confirmStep').classList.remove('hidden');
+  };
   $('notMeBtn').onclick = notMe;
   $('photoInput').onchange = function () { pickPhoto(this); };
   $('actionBtn').onclick = doClock;
@@ -390,5 +437,7 @@
   var cached = null;
   try { cached = JSON.parse(ls('clockin_state') || 'null'); } catch (e) {}
   if (cached && cached.registered) render(cached);
-  sync().then(load);
+  else { notMe(); show('register'); if (wantProfile) msg('regMsg', 'To change your profile, first set up this phone: type your name and PIN and press Next.', 'info'); }
+  // Load fresh data in the background; the screen above is already usable.
+  load(); sync();
 })();
