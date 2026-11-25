@@ -101,10 +101,16 @@
     $('workerMsg').textContent = v ? 'Visitor: sign in when you arrive and sign out when you leave.' : (s.message || '');
     $('locLabel').textContent = v ? 'Location you are visiting' : 'Work location';
     $('histTitle').textContent = v ? 'My sign-ins' : 'My clock-ins';
-    fillSelect($('loc'), s.locations, ls('clockin_location') || s.lastLocation);
+    var locs = (s.locations || []).slice();
+    if (!v && !locs.some(isOther)) locs.push('Other');
+    fillSelect($('loc'), locs, ls('clockin_location') || s.lastLocation);
+    if (!$('where').value) $('where').value = ls('clockin_where') || '';
     $('locWrap').classList.toggle('hidden', !!s.onSite);
+    updateWhere();
     $('visitorDone').classList.toggle('hidden', !v || !!s.onSite);
     $('profileBtn').classList.toggle('hidden', v);
+    $('photoLink').classList.toggle('hidden', v);
+    $('photoLink').textContent = s.photo ? 'Change photo' : 'Add photo';
     var pill = $('statusPill'), btn = $('actionBtn');
     if (s.onSite) {
       pill.className = 'status on'; pill.textContent = (v ? 'Signed in' : 'On site') + (s.location ? ' at ' + s.location : '') + ' since ' + s.since;
@@ -175,12 +181,25 @@
     }
   }
 
+  /* ---------- "Other" location: the worker must type where they are ---------- */
+  function isOther(n) { return /^\s*(other|off[\s-]?site)/i.test(n || ''); }
+  function updateWhere() {
+    var show = !!state && !state.onSite && !state.visitor && isOther($('loc').value);
+    $('whereWrap').classList.toggle('hidden', !show);
+  }
+
   /* ---------- clock in / out ---------- */
   function doClock() {
     if (!state || busy) return;
     var action = state.onSite ? 'OUT' : 'IN';
     var site = action === 'IN' ? $('loc').value : (state.location || $('loc').value);
     if (action === 'IN' && !site) { msg('mainMsg', state.visitor ? 'Pick the location you are visiting.' : 'Pick your work location first.'); return; }
+    var where = '';
+    if (action === 'IN' && !state.visitor && isOther(site)) {
+      where = $('where').value.replace(/\s+/g, ' ').trim();
+      if (!where) { msg('mainMsg', 'You picked ' + site + '. Type where you are first.'); $('where').focus(); return; }
+      ls('clockin_where', where);
+    }
     if (action === 'IN') ls('clockin_location', site);
     var btn = $('actionBtn');
     busy = true; btn.disabled = true;
@@ -188,12 +207,12 @@
     msg('mainMsg', '');
     getLocation().then(function (loc) {
       btn.textContent = 'Saving…';
-      var entry = { id: newId(), action: action, site: site, loc: loc ? { lat: loc.lat, lng: loc.lng, acc: loc.acc } : null, at: Date.now() };
+      var entry = { id: newId(), action: action, site: site, where: where, loc: loc ? { lat: loc.lat, lng: loc.lng, acc: loc.acc } : null, at: Date.now() };
       var vis = state.visitor ? getVisitor() : null;
       if (vis) entry.visitor = vis;
       var send = !online() ? Promise.reject({ network: true })
         : vis ? callApi('visitorClock', [phoneId(), vis, action, entry.loc, site, { at: entry.at, id: entry.id }], 12000)
-        : callApi('clock', [phoneId(), action, entry.loc, site, { at: entry.at, id: entry.id }], 12000);
+        : callApi('clock', [phoneId(), action, entry.loc, site, { at: entry.at, id: entry.id, where: entry.where || '' }], 12000);
       return send.then(function (r) {
         finish(r, false, entry);
         callApi('sync', [], 20000).catch(function () {});
@@ -417,6 +436,20 @@
   $('notMeBtn').onclick = notMe;
   $('photoInput').onchange = function () { pickPhoto(this); };
   $('actionBtn').onclick = doClock;
+  $('quickPhoto').onchange = function () {
+    var input = this;
+    if (!state || state.visitor) return;
+    if (!online()) { msg('mainMsg', 'No signal. Change your photo when you have signal.'); return; }
+    shrinkPhoto(input, function (d) {
+      input.value = '';
+      setImg('mainPhoto', d); $('photoLink').textContent = 'Saving…';
+      callApi('savePhoto', [phoneId(), d], 30000).then(function (p) {
+        state.photo = p.photo || d; saveState(); setImg('mainPhoto', state.photo);
+        $('photoLink').textContent = 'Change photo'; msg('mainMsg', 'Photo saved.', 'ok');
+      }, function (e) { setImg('mainPhoto', state.photo); $('photoLink').textContent = 'Change photo'; msg('mainMsg', e.message); });
+    });
+  };
+  $('loc').onchange = updateWhere;
   $('doneBtn').onclick = function () { render(state); load(); };
   window.addEventListener('online', function () { updateNet(); sync(); });
   window.addEventListener('offline', updateNet);

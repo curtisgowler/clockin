@@ -66,7 +66,7 @@ function flushQueue() {
         var e = items[i];
         var call = e.visitor
           ? callApi('visitorClock', [pid, e.visitor, e.action, e.loc, e.site, { at: e.at, id: e.id }], 20000)
-          : callApi('clock', [pid, e.action, e.loc, e.site, { at: e.at, id: e.id }], 20000);
+          : callApi('clock', [pid, e.action, e.loc, e.site, { at: e.at, id: e.id, where: e.where || '' }], 20000);
         return call.then(function () {
           result.sent++; i++; return queueDel(e.id).then(next);
         }, function (err) {

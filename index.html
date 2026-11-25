@@ -162,7 +162,11 @@
   <div id="main" class="hidden">
     <div class="card">
       <div class="who">
-        <img id="mainPhoto" class="avatar hidden" alt="">
+        <label for="quickPhoto" style="flex:none;cursor:pointer;text-align:center">
+          <img id="mainPhoto" class="avatar hidden" alt="">
+          <span style="display:block;font-size:13px;font-weight:700;color:#1d5fbf;margin-top:2px" id="photoLink">Change photo</span>
+        </label>
+        <input id="quickPhoto" type="file" accept="image/*" class="hidden">
         <div>
           <h2 id="hello"></h2>
           <div id="statusPill" class="status"></div>
@@ -172,6 +176,10 @@
       <div id="locWrap">
         <label for="loc" id="locLabel">Work location</label>
         <select id="loc"><option value="">Choose location…</option></select>
+        <div id="whereWrap" class="hidden">
+          <label for="where">Where are you? (required)</label>
+          <input id="where" type="text" maxlength="150" autocomplete="off" placeholder="Site, company, town or address">
+        </div>
       </div>
       <button id="actionBtn"></button>
       <div id="queueMsg" class="msg"></div>
@@ -193,7 +201,7 @@
     <div class="photo-pick">
       <img id="pPhoto" class="avatar hidden" alt="">
       <label class="btn" for="pPhotoInput">Change photo</label>
-      <input id="pPhotoInput" type="file" accept="image/*" capture="user" class="hidden">
+      <input id="pPhotoInput" type="file" accept="image/*" class="hidden">
     </div>
     <label for="pPhone">Phone number</label>
     <input id="pPhone" type="tel" autocomplete="tel" maxlength="30">

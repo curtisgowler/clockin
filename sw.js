@@ -1,6 +1,6 @@
 importScripts('queue.js');
 
-var CACHE = 'clockin-v5';
+var CACHE = 'clockin-v7';
 var FILES = ['./', 'index.html', 'app.js', 'queue.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
